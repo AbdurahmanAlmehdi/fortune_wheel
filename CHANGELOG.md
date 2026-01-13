@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## 0.1.0 - 2024-12-19
 
 ### Added
+
 - Initial release of Fortune Wheel package
 - Highly customizable spinning fortune wheel widget
 - Backend integration support with sequential and async modes
