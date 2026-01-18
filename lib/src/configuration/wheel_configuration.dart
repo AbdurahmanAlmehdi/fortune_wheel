@@ -34,9 +34,69 @@ class CirclePreferences {
   /// Color of the outer circle stroke
   final Color strokeColor;
 
+  /// Configuration for border dots
+  final BorderDotsConfiguration? borderDots;
+
+  /// Configuration for center indicator
+  final CenterIndicatorConfiguration? centerIndicator;
+
   const CirclePreferences({
     this.strokeWidth = 2.0,
     this.strokeColor = Colors.black,
+    this.borderDots,
+    this.centerIndicator,
+  });
+}
+
+/// Configuration for dots on the wheel border
+class BorderDotsConfiguration {
+  /// Size (radius) of each dot
+  final double dotSize;
+
+  /// Color of the dots
+  final Color dotColor;
+
+  /// Number of dots per slice (if null, uses one dot per slice)
+  final int? dotsPerSlice;
+
+  /// Border color around each dot
+  final Color? dotBorderColor;
+
+  /// Border width around each dot
+  final double dotBorderWidth;
+
+  const BorderDotsConfiguration({
+    this.dotSize = 6.0,
+    this.dotColor = Colors.white,
+    this.dotsPerSlice,
+    this.dotBorderColor,
+    this.dotBorderWidth = 2.0,
+  });
+}
+
+/// Configuration for center indicator
+class CenterIndicatorConfiguration {
+  /// Radius of the center circle
+  final double radius;
+
+  /// Color of the center circle
+  final Color color;
+
+  /// Border color of the center circle
+  final Color? borderColor;
+
+  /// Border width of the center circle
+  final double borderWidth;
+
+  /// Optional widget to display in the center (like text or icon)
+  final Widget? child;
+
+  const CenterIndicatorConfiguration({
+    this.radius = 30.0,
+    this.color = Colors.white,
+    this.borderColor,
+    this.borderWidth = 3.0,
+    this.child,
   });
 }
 

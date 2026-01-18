@@ -10,7 +10,11 @@ class TextContent extends SliceContent {
   final String text;
   final TextStyle? style;
   final TextOrientation orientation;
+
+  /// @deprecated Use [textMode] instead. Will be removed in a future version.
   final bool isCurved;
+
+  final SliceTextMode textMode;
   final bool flipUpsideDown;
   final double horizontalOffset;
   final double verticalOffset;
@@ -22,7 +26,8 @@ class TextContent extends SliceContent {
     required this.text,
     this.style,
     this.orientation = TextOrientation.horizontal,
-    this.isCurved = false,
+    @Deprecated('Use textMode instead') this.isCurved = false,
+    this.textMode = SliceTextMode.auto,
     this.flipUpsideDown = true,
     this.horizontalOffset = 0.0,
     this.verticalOffset = 0.0,
@@ -74,6 +79,18 @@ class LineContent extends SliceContent {
 enum TextOrientation {
   horizontal,
   vertical,
+}
+
+/// Text rendering mode for handling small slices
+enum SliceTextMode {
+  /// Force curved text along the arc
+  curved,
+
+  /// Force horizontal/flat text
+  horizontal,
+
+  /// Automatically choose based on available space
+  auto,
 }
 
 /// Line type options

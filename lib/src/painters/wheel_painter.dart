@@ -50,6 +50,16 @@ class WheelPainter extends CustomPainter {
 
     // Draw outer circle
     _drawOuterCircle(canvas, center, radius);
+
+    // Draw border dots (not rotated, so drawn after canvas.restore())
+    if (configuration.circlePreferences.borderDots != null) {
+      _drawBorderDots(canvas, center, radius, sliceCount);
+    }
+
+    // Draw center indicator (not rotated, so drawn after canvas.restore())
+    if (configuration.circlePreferences.centerIndicator != null) {
+      _drawCenterIndicator(canvas, center);
+    }
   }
 
   /// Draws a single slice
@@ -250,13 +260,33 @@ class WheelPainter extends CustomPainter {
 
     canvas.save();
 
-    if (content.isCurved && content.orientation == TextOrientation.horizontal) {
+    // Determine rendering mode (backwards compatible with deprecated isCurved)
+    final bool useCurvedText;
+    if (content.textMode == SliceTextMode.auto) {
+      // Auto mode: decide based on available space
+      useCurvedText = _shouldUseCurvedText(
+        content.text,
+        textStyle,
+        sweepAngle,
+        radius - distanceFromCenter,
+      );
+    } else if (content.textMode == SliceTextMode.curved) {
+      useCurvedText = true;
+    } else if (content.textMode == SliceTextMode.horizontal) {
+      useCurvedText = false;
+    } else {
+      // Fallback to deprecated isCurved property
+      useCurvedText = content.isCurved;
+    }
+
+    if (useCurvedText && content.orientation == TextOrientation.horizontal) {
       // Curved text using the curved_text package
       _drawCurvedText(
         canvas,
         center,
         radius,
         centerAngle,
+        sweepAngle,
         distanceFromCenter,
         content,
         textStyle,
@@ -289,12 +319,49 @@ class WheelPainter extends CustomPainter {
     canvas.restore();
   }
 
+  /// Determines if curved text should be used based on available space
+  bool _shouldUseCurvedText(
+    String text,
+    TextStyle textStyle,
+    double sliceAngle,
+    double textRadius,
+  ) {
+    // Measure text width
+    final textPainter = TextPainter(
+      text: TextSpan(text: text, style: textStyle),
+      textDirection: TextDirection.ltr,
+    )..layout();
+
+    // Calculate required arc angle for the text
+    final requiredArcAngle = textPainter.width / textRadius;
+
+    // Use 90% of slice angle as available space (10% margin)
+    final availableArcAngle = sliceAngle * 0.9;
+
+    // Use curved text only if it fits comfortably
+    // Additional heuristics:
+    // - Very small slices (< 15°) → always horizontal
+    // - Text too long (> 10 chars in small slice) → horizontal
+    final sliceDegrees = WheelMath.radiansToDegrees(sliceAngle);
+
+    if (sliceDegrees < 15) {
+      return false; // Too small, always use horizontal
+    }
+
+    if (sliceDegrees < 30 && text.length > 5) {
+      return false; // Medium slice with long text
+    }
+
+    return requiredArcAngle <= availableArcAngle;
+  }
+
   /// Draws curved text following the circular arc
   void _drawCurvedText(
     Canvas canvas,
     Offset center,
     double radius,
     double centerAngle,
+    double sweepAngle,
     double distanceFromCenter,
     TextContent content,
     TextStyle textStyle,
@@ -313,8 +380,12 @@ class WheelPainter extends CustomPainter {
     final textWidth = textPainter.width;
     final arcAngle = textWidth / textRadius;
 
+    // FIX: Constrain arc angle to slice boundaries (use 90% for padding)
+    final maxArcAngle = sweepAngle * 0.9;
+    final constrainedArcAngle = math.min(arcAngle, maxArcAngle);
+
     // Adjust starting angle to center the text
-    var startAngle = centerAngle - (arcAngle / 2);
+    var startAngle = centerAngle - (constrainedArcAngle / 2);
 
     // Flip if upside down
     if (shouldFlip) {
@@ -332,7 +403,7 @@ class WheelPainter extends CustomPainter {
       content.text,
       textStyle,
       textRadius,
-      arcAngle,
+      constrainedArcAngle,
     );
 
     canvas.rotate(-startAngle);
@@ -392,7 +463,10 @@ class WheelPainter extends CustomPainter {
 
     canvas.translate(position.dx, position.dy);
 
-    var rotationAngle = centerAngle + (math.pi / 2);
+    // FIX: Correct rotation calculation to align with slice orientation
+    // The centerAngle already includes startPosition offset, so we compensate
+    // to get the natural slice-relative rotation, then add π/2 to point "up"
+    var rotationAngle = centerAngle - configuration.startPosition.radians + (math.pi / 2);
     if (shouldFlip) {
       rotationAngle += math.pi;
     }
@@ -511,6 +585,80 @@ class WheelPainter extends CustomPainter {
   bool _isUpsideDown(double angle) {
     final normalized = WheelMath.normalizeAngle(angle);
     return normalized > math.pi / 2 && normalized < (3 * math.pi / 2);
+  }
+
+  /// Draws border dots around the wheel edge
+  void _drawBorderDots(
+    Canvas canvas,
+    Offset center,
+    double radius,
+    int sliceCount,
+  ) {
+    final dotsConfig = configuration.circlePreferences.borderDots!;
+
+    // Determine number of dots
+    final dotsPerSlice = dotsConfig.dotsPerSlice ?? 1;
+    final totalDots = sliceCount * dotsPerSlice;
+    final anglePerDot = (2 * math.pi) / totalDots;
+
+    for (int i = 0; i < totalDots; i++) {
+      // Calculate angle for this dot
+      // If dotsPerSlice is 1, dots will be at slice boundaries
+      // If dotsPerSlice > 1, dots will be distributed within each slice
+      final dotAngle = configuration.startPosition.radians + (i * anglePerDot);
+
+      // Calculate dot position on the wheel edge
+      final dotPosition = WheelMath.polarToCartesian(
+        center,
+        dotAngle,
+        radius,
+      );
+
+      // Draw dot border if specified
+      if (dotsConfig.dotBorderColor != null && dotsConfig.dotBorderWidth > 0) {
+        final borderPaint = Paint()
+          ..color = dotsConfig.dotBorderColor!
+          ..style = PaintingStyle.fill;
+
+        canvas.drawCircle(
+          dotPosition,
+          dotsConfig.dotSize + dotsConfig.dotBorderWidth,
+          borderPaint,
+        );
+      }
+
+      // Draw dot
+      final dotPaint = Paint()
+        ..color = dotsConfig.dotColor
+        ..style = PaintingStyle.fill;
+
+      canvas.drawCircle(dotPosition, dotsConfig.dotSize, dotPaint);
+    }
+  }
+
+  /// Draws center indicator circle
+  void _drawCenterIndicator(Canvas canvas, Offset center) {
+    final centerConfig = configuration.circlePreferences.centerIndicator!;
+
+    // Draw border if specified
+    if (centerConfig.borderColor != null && centerConfig.borderWidth > 0) {
+      final borderPaint = Paint()
+        ..color = centerConfig.borderColor!
+        ..style = PaintingStyle.fill;
+
+      canvas.drawCircle(
+        center,
+        centerConfig.radius + centerConfig.borderWidth,
+        borderPaint,
+      );
+    }
+
+    // Draw center circle
+    final centerPaint = Paint()
+      ..color = centerConfig.color
+      ..style = PaintingStyle.fill;
+
+    canvas.drawCircle(center, centerConfig.radius, centerPaint);
   }
 
   @override

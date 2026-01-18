@@ -6,5 +6,6 @@ export 'src/configuration/wheel_configuration.dart';
 export 'src/configuration/pin_configuration.dart';
 
 export 'src/widgets/fortune_wheel.dart';
+export 'src/widgets/arrow_pin.dart';
 
 export 'src/utils/wheel_math.dart';
