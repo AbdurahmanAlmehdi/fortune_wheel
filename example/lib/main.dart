@@ -201,16 +201,18 @@ class _FortuneWheelDemoState extends State<FortuneWheelDemo> {
       _isSpinning = true;
     });
 
-    _wheelKey.currentState!.spinToIndex(
-      index,
-      fullRotations: 3,
-      duration: const Duration(seconds: 2),
-    ).then((_) {
-      setState(() {
-        _selectedIndex = index;
-        _isSpinning = false;
-      });
-    });
+    _wheelKey.currentState!
+        .spinToIndex(
+          index,
+          fullRotations: 3,
+          duration: const Duration(seconds: 2),
+        )
+        .then((_) {
+          setState(() {
+            _selectedIndex = index;
+            _isSpinning = false;
+          });
+        });
   }
 
   void _showWinDialog(int index) {
@@ -246,10 +248,7 @@ class _FortuneWheelDemoState extends State<FortuneWheelDemo> {
             padding: const EdgeInsets.all(16.0),
             child: Text(
               _statusMessage,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
-              ),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
               textAlign: TextAlign.center,
             ),
           ),
@@ -374,10 +373,7 @@ class _FortuneWheelDemoState extends State<FortuneWheelDemo> {
                 // Quick test buttons
                 Text(
                   'Quick Test (no backend):',
-                  style: TextStyle(
-                    color: Colors.grey[600],
-                    fontSize: 12,
-                  ),
+                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
                 ),
                 const SizedBox(height: 8),
                 Wrap(
@@ -385,7 +381,9 @@ class _FortuneWheelDemoState extends State<FortuneWheelDemo> {
                   children: List.generate(
                     _prizes.length,
                     (index) => ElevatedButton(
-                      onPressed: _isSpinning ? null : () => _handleQuickSpin(index),
+                      onPressed: _isSpinning
+                          ? null
+                          : () => _handleQuickSpin(index),
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 12,

@@ -17,6 +17,25 @@ typedef CollisionCallback = void Function(double? progress);
 /// Callback for slice selection
 typedef SliceCallback = void Function(int index);
 
+/// Custom curve that maintains linear speed then decelerates
+/// Useful for smooth transitions from continuous rotation
+class _LinearToDecelerateCurve extends Curve {
+  final double decelerateAt;
+
+  const _LinearToDecelerateCurve({this.decelerateAt = 0.7});
+
+  @override
+  double transform(double t) {
+    if (t < decelerateAt) {
+      return t;
+    } else {
+      final normalizedT = (t - decelerateAt) / (1.0 - decelerateAt);
+      final easeOut = 1.0 - (1.0 - normalizedT) * (1.0 - normalizedT);
+      return decelerateAt + (1.0 - decelerateAt) * easeOut;
+    }
+  }
+}
+
 /// Main Fortune Wheel widget with advanced animation and backend integration
 class FortuneWheel extends StatefulWidget {
   /// List of slices to display in the wheel
@@ -69,7 +88,7 @@ class FortuneWheel extends StatefulWidget {
     this.centerCollisionDetection = false,
     this.animationDuration = const Duration(seconds: 5),
     this.animationCurve = Curves.easeOutCubic,
-  })  : assert(slices.length > 0, 'Must have at least one slice');
+  }) : assert(slices.length > 0, 'Must have at least one slice');
 
   @override
   State<FortuneWheel> createState() => FortuneWheelState();
@@ -96,15 +115,15 @@ class FortuneWheelState extends State<FortuneWheel>
       duration: widget.animationDuration,
     );
 
-    _rotationAnimation = Tween<double>(
-      begin: _currentRotation,
-      end: _currentRotation,
-    ).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: widget.animationCurve,
-    ))
-      ..addListener(_onAnimationUpdate)
-      ..addStatusListener(_onAnimationStatusChanged);
+    _rotationAnimation =
+        Tween<double>(begin: _currentRotation, end: _currentRotation).animate(
+            CurvedAnimation(
+              parent: _animationController,
+              curve: widget.animationCurve,
+            ),
+          )
+          ..addListener(_onAnimationUpdate)
+          ..addStatusListener(_onAnimationStatusChanged);
   }
 
   @override
@@ -215,15 +234,13 @@ class FortuneWheelState extends State<FortuneWheel>
   /// Rotates to a specific angle
   void rotateTo(double targetRotation, {Duration? duration}) {
     _animationController.stop();
-    _animationController.duration = duration ?? const Duration(milliseconds: 300);
+    _animationController.duration =
+        duration ?? const Duration(milliseconds: 300);
 
-    _rotationAnimation = Tween<double>(
-      begin: _currentRotation,
-      end: targetRotation,
-    ).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeOut,
-    ));
+    _rotationAnimation =
+        Tween<double>(begin: _currentRotation, end: targetRotation).animate(
+          CurvedAnimation(parent: _animationController, curve: Curves.easeOut),
+        );
 
     _animationController.forward(from: 0.0);
   }
@@ -234,12 +251,18 @@ class FortuneWheelState extends State<FortuneWheel>
     int targetIndex, {
     int fullRotations = 5,
     Duration? duration,
+    bool allowInterrupt = false,
+    bool maintainDirection = false,
+    Curve? customCurve,
   }) async {
     if (targetIndex < 0 || targetIndex >= widget.slices.length) {
       throw ArgumentError('Index out of range: $targetIndex');
     }
 
-    if (_isSpinning) {
+    if (_isSpinning && allowInterrupt) {
+      _animationController
+          .stop(); // Stop the current animation if allowInterrupt is true
+    } else if (_isSpinning) {
       return; // Already spinning
     }
 
@@ -255,20 +278,44 @@ class FortuneWheelState extends State<FortuneWheel>
       widget.configuration?.startPosition ?? WheelStartPosition.top,
     );
 
-    // Add full rotations (counter-clockwise is positive in our coordinate system)
-    final fullRotationRadians = fullRotations * 2 * math.pi;
-    final finalRotation = _currentRotation - fullRotationRadians +
-        (targetRotation - _currentRotation);
+    double finalRotation;
+
+    if (maintainDirection) {
+      // Continue in the same direction (counter-clockwise)
+      // Normalize current rotation to find where we are
+      final normalizedCurrent = WheelMath.normalizeAngle(_currentRotation);
+      final normalizedTarget = WheelMath.normalizeAngle(targetRotation);
+
+      // Calculate the angular difference
+      double angularDiff = normalizedTarget - normalizedCurrent;
+
+      // If the difference is positive, we need to go the long way around
+      // to maintain counter-clockwise direction
+      if (angularDiff > 0) {
+        angularDiff -= 2 * math.pi;
+      }
+
+      // Add full rotations and the angular difference
+      final fullRotationRadians = fullRotations * 2 * math.pi;
+      finalRotation = _currentRotation - fullRotationRadians + angularDiff;
+    } else {
+      // Original behavior: shortest path with full rotations
+      final fullRotationRadians = fullRotations * 2 * math.pi;
+      finalRotation =
+          _currentRotation -
+          fullRotationRadians +
+          (targetRotation - _currentRotation);
+    }
 
     _animationController.duration = duration ?? widget.animationDuration;
 
-    _rotationAnimation = Tween<double>(
-      begin: _currentRotation,
-      end: finalRotation,
-    ).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: widget.animationCurve,
-    ));
+    _rotationAnimation =
+        Tween<double>(begin: _currentRotation, end: finalRotation).animate(
+          CurvedAnimation(
+            parent: _animationController,
+            curve: customCurve ?? widget.animationCurve,
+          ),
+        );
 
     await _animationController.forward(from: 0.0);
   }
@@ -294,9 +341,7 @@ class FortuneWheelState extends State<FortuneWheel>
   }
 
   /// Starts continuous rotation (infinite spinning)
-  void startContinuousRotation({
-    double rotationsPerSecond = 1.0,
-  }) {
+  void startContinuousRotation({double rotationsPerSecond = 1.0}) {
     if (_isSpinning) return;
 
     setState(() {
@@ -307,13 +352,13 @@ class FortuneWheelState extends State<FortuneWheel>
       milliseconds: (1000 / rotationsPerSecond).round(),
     );
 
-    _rotationAnimation = Tween<double>(
-      begin: _currentRotation,
-      end: _currentRotation - (2 * math.pi), // One full rotation
-    ).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.linear,
-    ));
+    _rotationAnimation =
+        Tween<double>(
+          begin: _currentRotation,
+          end: _currentRotation - (2 * math.pi), // One full rotation
+        ).animate(
+          CurvedAnimation(parent: _animationController, curve: Curves.linear),
+        );
 
     _animationController.repeat();
   }
@@ -330,8 +375,13 @@ class FortuneWheelState extends State<FortuneWheel>
     if (landOnIndex != null) {
       await spinToIndex(
         landOnIndex,
-        fullRotations: 2,
+        fullRotations: 0,
         duration: decelerationDuration ?? const Duration(seconds: 3),
+        allowInterrupt: true,
+        maintainDirection: true,
+        customCurve: const _LinearToDecelerateCurve(
+          decelerateAt: 0.7,
+        ), // Maintain speed then smoothly decelerate
       );
     } else {
       setState(() {
@@ -379,8 +429,7 @@ class FortuneWheelState extends State<FortuneWheel>
           ),
 
           // Pin indicator
-          if (widget.showPin && widget.pinConfiguration != null)
-            _buildPin(),
+          if (widget.showPin && widget.pinConfiguration != null) _buildPin(),
         ],
       ),
     );
@@ -452,9 +501,7 @@ class FortuneWheelState extends State<FortuneWheel>
 
     // Position the pin based on configuration
     return Positioned(
-      top: config.position == PinPosition.top
-          ? config.verticalOffset
-          : null,
+      top: config.position == PinPosition.top ? config.verticalOffset : null,
       bottom: config.position == PinPosition.bottom
           ? config.verticalOffset
           : null,
